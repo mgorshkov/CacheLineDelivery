@@ -13,8 +13,6 @@
 #include <cstring>
 #include <vector>
 
-#include "SpinLock.hpp"
-
 //#define DEBUG_LOG
 
 static inline std::uint64_t rdtsc() {
@@ -31,12 +29,10 @@ static inline void setThreadAffinity(pthread_t thread, int cpu) {
     }
 }
 
-static constexpr std::size_t kCacheLineSize = 64;
-
 struct CacheLine {
     uint64_t timestamp;
-    unsigned char data[kCacheLineSize - sizeof(int64_t)];
-};
+    unsigned char data[CACHELINE_SIZE - sizeof(int64_t)];
+} __attribute((aligned(CACHELINE_SIZE)));
 
 static int64_t getReport(std::unique_ptr<CacheLine[]> cacheLineArray, std::size_t size, double freq) {
     std::vector<uint64_t> report;
@@ -67,7 +63,6 @@ static int64_t getReport(std::unique_ptr<CacheLine[]> cacheLineArray, std::size_
 // publisher      write   | wait    | wait    | read    | ...
 // consumer       wait    | read    | write   | wait    | ...
 //-------------------------------------------------------------
-// Between stages 1/2 and 3/4 we synchronize by means of an atomic flag
 // Data looks like this
 // TS counter 1 (write)
 // TS counter 1 (read)
@@ -83,33 +78,24 @@ static int64_t getReport(std::unique_ptr<CacheLine[]> cacheLineArray, std::size_
 // …
 // TS diff 999999 = TS counter 1000000 - TS counter 999999
 
-using Lock = AtomicFlagLock;
-//using Lock = SpinLock;
-
 static int64_t runBenchmark(int num_messages, int core1, int core2, double freq) {
     const std::size_t size = num_messages * 2;
     std::unique_ptr<CacheLine[]> cacheLineArray{new CacheLine[size]()};
     const auto startPtr = &cacheLineArray[0];
     const auto endPtr = startPtr + size;
 
-    Lock lock;
-
     // consumer
-    std::thread consumer{[startPtr, endPtr, &lock, core1] {
+    std::thread consumer{[startPtr, endPtr, core1] {
         setThreadAffinity(pthread_self(), core1);
 
         auto ptr = startPtr;
         // same cacheline for read/write
         while (ptr < endPtr) {
-            // if we switch false->true, then go through
-            // otherwise wait until the flag becomes false
             CacheLine cacheLine;
             do {
-                Locker<Lock> locker(lock);
                 std::memcpy(&cacheLine, ptr, sizeof(CacheLine)); // read
             } while (cacheLine.timestamp == 0);
             ++ptr;
-            Locker<Lock> locker(lock);
             std::memcpy(ptr++, &cacheLine, sizeof(CacheLine)); // write
         }
     }};
@@ -121,13 +107,11 @@ static int64_t runBenchmark(int num_messages, int core1, int core2, double freq)
     while (ptr < endPtr) {
         CacheLine cacheLine{rdtsc()};
         {
-            Locker<Lock> locker(lock);
             std::memcpy(ptr++, &cacheLine, sizeof(CacheLine)); // write
         }
 
         CacheLine cacheLineRead;
         do {
-            Locker<Lock> locker(lock);
             std::memcpy(&cacheLineRead, ptr, sizeof(CacheLine)); // read
         } while (cacheLineRead.timestamp != cacheLine.timestamp);
         ++ptr;
@@ -146,6 +130,7 @@ int main(int argc, char** argv) {
                          "example: ./measure_cache_line_delivery_ns 1000 5 6 4.0";
 
     std::cerr << kAbout << std::endl;
+    std::cerr << "Cache line size is " << CACHELINE_SIZE << "bytes" << std::endl;
     std::cerr << kUsage << std::endl;
 
     if (argc == 2 && !strcmp(argv[1], "-h")) {
