@@ -106,9 +106,7 @@ static int64_t runBenchmark(int num_messages, int core1, int core2, double freq)
     auto ptr = startPtr;
     while (ptr < endPtr) {
         CacheLine cacheLine{rdtsc()};
-        {
-            std::memcpy(ptr++, &cacheLine, sizeof(CacheLine)); // write
-        }
+        std::memcpy(ptr++, &cacheLine, sizeof(CacheLine)); // write
 
         CacheLine cacheLineRead;
         do {

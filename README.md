@@ -2,6 +2,11 @@
 
 This sample measures single-trip delivery latency of one cache line-sized block between two CPUs of the same core.
 
+# How it works
+
+The samples writes a cacheline to memory by a core, which is read it by another core. The cacheline is duplicated and 
+is read by an original core. The roundtrip time is measured and divided by two.
+
 # Requirements
 * x86
 
@@ -71,7 +76,7 @@ A tool for measuring latency of a single cache line-length message delivery betw
 Usage: ./measure_cache_line_delivery_ns [<num_messages> (default 1M)] [<consumer cpu id> (default 0)] [<producer cpu id> (default 1)] [<cpu freq (HGz)> (default 3.0)]
 example: ./measure_cache_line_delivery_ns 1000 5 6 4.0
 Running the benchmark with parameters: num_messages=1000, core1=2, core2=3, freq=4GHz...
-Single trip is 411ns 
+Single trip is 82ns 
 ```
 ```
 ./measure_cache_line_delivery_ns
@@ -79,6 +84,6 @@ A tool for measuring latency of a single cache line-length message delivery betw
 Usage: ./measure_cache_line_delivery_ns [<num_messages> (default 1M)] [<consumer cpu id> (default 0)] [<producer cpu id> (default 1)] [<cpu freq (HGz)> (default 3.0)]
 example: ./measure_cache_line_delivery_ns 1000 5 6 4.0
 Running the benchmark with parameters: num_messages=1000000, core1=0, core2=1, freq=3GHz...
-Single trip is 399ns 
+Single trip is 80ns 
 
 ```
